@@ -1,0 +1,225 @@
+---
+title: "bump_plot"
+author: "Deepak Dhankani"
+date: "5/4/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = F}
+library(tidyverse)
+library(scales)
+library(ggthemes)
+```
+
+```{r, message = F}
+df <- read_csv('annual-number-of-deaths-by-cause.csv')
+head(df)
+```
+
+```{r}
+skimr::skim(df)
+```
+
+```{r}
+df %>%
+  #janitor::clean_names() %>%
+  #select(-Execution) %>%
+  filter(Entity == "India") -> india
+
+
+df %>%
+  #select(-Execution,-Code) %>%
+  pivot_longer(cols = -c(Entity, Year, Code, Execution),names_to = "condition", values_to = "deaths") %>%
+  #group_by(Entity, condition) %>%
+  #summarize(deaths = mean(zoo::na.approx(deaths))) %>%
+  #ungroup()
+  group_by(Year, condition) %>%
+  summarize(total_deaths = mean(deaths, na.rm = T)) -> df_pivot
+  
+```
+
+```{r}
+india %>%
+  filter(is.na(`Intestinal infectious diseases (deaths)`) | Year %in% c(2016,2015))
+```
+
+```{r}
+india %>%
+  ggplot(aes(x = Year, y = `Intestinal infectious diseases (deaths)`)) +
+  geom_line(color = "orange") +
+  stat_smooth(method = "lm", formula = y~poly(x, 1, raw = T), se = F) 
+
+```
+
+```{r}
+model <- lm(`Intestinal infectious diseases (deaths)`~Year, data = india)
+predict(model, newdata = india[which(india$Year == 2017),])
+```
+```{r}
+india %>%
+  mutate(`Intestinal infectious diseases (deaths)` = if_else(is.na(`Intestinal infectious diseases (deaths)`), 
+        predict(model, newdata = india[which(india$Year == 2017),]),
+        `Intestinal infectious diseases (deaths)`)) -> india
+```
+
+```{r}
+india %>%
+  ggplot(aes(x = Year, y = `Terrorism (deaths)`)) +
+  geom_line(color = "orange") +
+  stat_smooth(method = "lm", formula = y~poly(x, 1, raw = T), se = F) 
+
+```
+
+```{r}
+plot(x = india$Year, y = zoo::na.approx(india$`Terrorism (deaths)`), type = "l")
+```
+
+```{r}
+india$`Terrorism (deaths)` <- zoo::na.approx(india$`Terrorism (deaths)`)
+india
+```
+
+```{r}
+india_pivot <-
+india %>%
+  pivot_longer(-c(Entity, Year, Code), names_to = 'condition', values_to = 'deaths')
+
+india_pivot %>% head()
+```
+
+```{r, warning=F, message = F}
+
+india_pivot %>%
+  arrange(Year,desc(deaths)) %>%
+  group_by(Year) %>%
+  mutate(rank = row_number()) %>%
+  group_by(Year) %>%
+  mutate(cond_pct_1990 = ifelse(Year == 1990, paste0(round(deaths * 100/(sum(deaths)),1), "%"), NA),
+         cond_pct_2017 = ifelse(Year == 2017, paste0(round(deaths * 100/(sum(deaths)),1), "%"), NA),
+         cond_pct_1990 = ifelse(cond_pct_1990 == "0%","< 0.1%", cond_pct_1990),
+         cond_pct_2017 = ifelse(cond_pct_2017 == "0%","< 0.1%", cond_pct_2017),
+         rank_1990 = ifelse(Year == 1990, rank, NA),
+         rank_2017 = ifelse(Year == 2017, rank, NA),
+         condition = str_replace(condition, " \\(.*\\)", ""),
+         condition = str_to_title(condition)) -> india_pivot
+# 
+# india_pivot %>%
+#   group_by(Year) %>%
+#   mutate(cond_pct = round(deaths * 100/(sum(deaths)),1)) %>%
+#   filter(Year %in% c(1990, 2017)) %>%
+#   select(Year,condition,rank,cond_pct) %>%
+#   mutate(cond_pct = paste0(cond_pct,"%"),
+#          cond_pct = ifelse(cond_pct == "0%","< 0.1%", cond_pct)) %>%
+#   pivot_wider(names_from = Year, values_from = c(cond_pct,rank)) ->death_pct
+
+df_pivot %>% arrange(Year,desc(total_deaths)) %>%
+    group_by(Year) %>%
+    mutate(trank = row_number()) %>%
+    group_by(Year) %>%
+    mutate(tcond_pct_1990 = ifelse(Year == 1990, paste0(round(total_deaths * 100/(sum(total_deaths)),1), "%"), NA),
+           tcond_pct_2017 = ifelse(Year == 2017, paste0(round(total_deaths * 100/(sum(total_deaths)),1), "%"), NA),
+           tcond_pct_1990 = ifelse(tcond_pct_1990 == "0%","< 0.1%", tcond_pct_1990),
+           tcond_pct_2017 = ifelse(tcond_pct_2017 == "0%","< 0.1%", tcond_pct_2017),
+           trank_1990 = ifelse(Year == 1990, trank, NA),
+           trank_2017 = ifelse(Year == 2017, trank, NA),
+           condition = str_replace(condition, " \\(.*\\)", ""),
+           condition = str_to_title(condition)) -> df_pivot
+
+india_pivot %>%
+  left_join(df_pivot, by = c("Year", "condition"))-> india_pivot
+
+ggplot(india_pivot) +
+  geom_line(aes(x = Year, y = rank, group = condition)) + 
+  geom_line(aes(x = Year, y = trank, group = condition), linetype = "dashed") + 
+  #geom_point() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_x_continuous(breaks = c(1990, 1994, 1998, 2002, 2006, 2010, 2014, 2017)) +  
+  scale_y_reverse(breaks = c(1,8,16,24,33)) + 
+  #scale_fill_manual(values = c("blue","yellow")) + 
+  #scale_color_brewer(palette="Yellow") +
+  facet_wrap(~fct_reorder(condition,deaths, .desc = T)) +
+#  geom_line(aes(x = Year, y = rank, group = condition, alpha = 0.3, color = "grey20" )) +
+#  geom_text(data = death_pct,
+#            mapping = aes(x = 1991, y = rank_1990+3, label = cond_pct_1990)
+#            ) +
+#  geom_text(data = death_pct,
+#            mapping = aes(x = 2016, y = rank_2017+3, label = cond_pct_2017)) +
+  geom_text(mapping = aes(x = 1989, y = rank, label = rank_1990, group = condition), size =2, fontface = "bold") +
+  geom_text(mapping = aes(x = 2018, y = rank, label = rank_2017, group = condition), size =2, fontface = "bold") +
+  geom_text(mapping = aes(x = 1989, y = trank, label = trank_1990, group = condition), size = 2) +
+  geom_text(mapping = aes(x = 2018, y = trank, label = trank_2017, group = condition), size = 2) +
+    labs(title = "Leading Causes of Death: India vs the World",
+       subtitle = "Ranking of Annual Mortality Rates during 1990-2017",
+       x = "",
+       y = "",
+       caption = "Data Source: www.OurWorldinData.org") +
+    theme_wsj(color = "gray", base_size = 10) +
+  theme(#legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.caption = element_text(face = "italic"),
+        axis.text.x = element_text(size = 6),
+        axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.title.y = element_text(angle = 0, vjust = 0.5),
+        strip.text = element_text(hjust = 0.5, face = "bold")) -> simple
+
+ggsave("mortality_india_world.jpg",simple, width = 35, height = 20, units = "cm")
+
+simple
+```
+
+```{r, warning = F, message = F}
+library(gghighlight)
+ggplot(india_pivot) +
+  geom_line(aes(x = Year, y = rank, group = condition, alpha = 0.1, color = "blue")) + 
+  geom_line(aes(x = Year, y = trank, group = condition), color = "green") + 
+  gghighlight(aes(alpha = 1)) +
+  geom_point(aes(x = Year, y = rank, group = condition), size = .2, color = "blue",shape = 1) +
+  scale_y_reverse(breaks = c(1,8,16,24,33)) + 
+  scale_x_continuous(breaks = c(1990, 1994, 1998, 2002, 2006, 2010, 2014, 2017)) + 
+  facet_wrap(~fct_reorder(condition,deaths, .desc = T)) +
+  geom_text(mapping = aes(x = 1992, y = rank + 3, label = cond_pct_1990, group = condition), size =3) +
+  geom_text(mapping = aes(x = 2016, y = rank + 3, label = cond_pct_2017, group = condition), size =3) +
+  labs(title = "How do people die in India?",
+       subtitle = "Ranking of Annual Mortality Rates during 1990-2017",
+       x = "",
+       y = "Rank",
+       caption = "Data Source: www.OurWorldinData.org") +
+    theme_wsj(color = "white", base_size = 10) +
+  theme(#legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.caption = element_text(face = "italic"),
+        axis.text.x = element_text(size = 6),
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.title.y = element_text(angle = 0, vjust = 0.5),
+        strip.text = element_text(hjust = 0.5, face = "bold")) -> g
+g
+ggsave("India_mortality.jpg", g,  width = 35, height = 20, units = "cm")
+
+ggsave("INDIA.pdf",g, width = 35, height = 20, units = "cm")
+```
+
+```{r}
+india_pivot %>%
+  filter(Year == 1990) %>%
+  ggplot() +
+  geom_bar(aes(x = fct_reorder(condition,deaths), y = deaths), stat = "identity") +
+  coord_flip()
+```
+
+```{r}
+india_pivot %>%
+  filter(Year == 2017) %>%
+#  arrange(fct_reorder(condition,deaths)) %>%
+#  head(10) %>%
+  ggplot() +
+  geom_bar(aes(x = fct_reorder(condition,deaths), y = deaths), stat = "identity") +
+  coord_flip()
+```
