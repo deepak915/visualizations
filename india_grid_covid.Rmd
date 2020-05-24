@@ -1,0 +1,140 @@
+---
+title: "india_state_grid"
+author: "Deepak Dhankani"
+date: "5/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+```{r}
+library(RColorBrewer)
+library(tidyverse)
+
+grid <- read_csv('covid_cases_india.csv')
+head(grid) %>%
+  kableExtra::kable() %>%
+  kableExtra::kable_styling()
+```
+
+```{r}
+
+symbols(grid$x, grid$y, squares = rep(1, dim(grid)[1]), inches=FALSE, asp=1, bty="n", xaxt="n", yaxt="n", xlab="", ylab="")
+text(grid$x, grid$y, grid$state_code)
+```
+
+```{r}
+testing <- read_csv('StatewiseTestingDetails.csv')
+head(testing) %>%
+  kableExtra::kable() %>%
+  kableExtra::kable_styling()
+```
+
+```{r}
+testing %>%
+  group_by(State) %>%
+  summarize(date = max(Date, na.rm = T), 
+            tests = max(TotalSamples, na.rm = T),
+            positive = max(Positive, na.rm = T)) -> testing_max
+
+grid %>%
+  left_join(testing_max, on = "State")  %>%
+  mutate(positive = case_when(is.na(positive)~0,
+                                T~positive),
+         date = case_when(is.na(date)~as.Date('2020-05-08'),
+                          T~ date),
+         tpp = case_when(positive==0 ~ 0,
+                         T~ tests/positive) %>%
+           round()) ->full_table
+
+full_table %>%
+  head() %>%
+  kableExtra::kable() %>%
+  kableExtra::kable_styling()
+```
+
+## Base R
+
+```{r}
+# Draw grid and labels again.
+symbols(full_table$x, full_table$y, squares = rep(1, dim(full_table)[1]), inches=FALSE, asp=1, bty="n", xaxt="n", yaxt="n", xlab="", ylab="")
+labeltext <- paste(full_table$state_code, full_table$tpp, sep="\n") 
+text(full_table$x, full_table$y, labeltext, cex=.8)
+```
+
+```{r}
+
+full_table$col <- sapply(full_table$tpp, function(x) {
+    if (x == 0) {
+      col <- "#cccccc"
+    } else if (x < 25) {
+        col <- "#c80000"
+    } else if (x < 50) {
+        col <- "#c84d00"
+    } else if (x < 75) {
+        col <- "#c88500"
+    } else if (x < 100) {
+        col <- "#c8a000"
+    } else if (x< 150) {
+        col <- "#c5c800"
+    } else {
+        col <- "#00c857"
+    }
+    return(col)
+})
+
+#pdf("india_covid.pdf")
+par(new=TRUE, plt=c(0, 1, 0, 1))
+symbols(full_table$x, full_table$y, 
+        squares = rep(1, dim(full_table)[1]), 
+        inches=FALSE, 
+        asp=1, 
+        bty="n", 
+        xaxt="n", yaxt="n", 
+        xlab="", ylab="", 
+        bg=full_table$col)
+labeltext <- paste(full_table$state_code, "\n", format(ifelse(full_table$tpp == 0, "NRC", full_table$tpp), 2), sep="") 
+text(full_table$x, full_table$y, labeltext, cex=.6, col="#ffffff")
+
+
+```
+
+## GGPLOT
+
+```{r, fig.height=10, fig.width=10}
+ggplot(full_table, aes(x = x, y= y)) +
+  geom_text(aes(label = state_code))
+```
+
+```{r, fig.height=11, fig.width=11}
+indiagrid <- ggplot(full_table, aes(xmin = x, ymin = y, xmax = x+1, ymax = y+1, fill = ifelse(tpp==0,200, ifelse(tpp>200,200,tpp))))
+
+indiagrid + 
+  geom_rect(color = "#000000") +
+  geom_text(aes(x = x, y = y, label = paste0(state_code, "\n", ifelse(tpp==0, "NRC", tpp))), 
+            nudge_x = 0.5, nudge_y = 0.5, size = 5.5, color = "white") + 
+  #scale_fill_continuous(low = "red", high = "limegreen") +
+  #scale_fill_manual(values = c("#cccccc","#c80000","#c88500","#c8a000","#c5c800","#00c857")) +
+  scale_fill_gradientn(colours = c("#c80000","#c88500","#c8a000","#c5c800","#00c857"), name = "Tests per positive") +
+#  annotate("text", x = 0, y = 0, label = "@deepak_dhankani", hjust = 0, size = 3) +
+  annotate("text", x = 6.5, y = 9, label = "NRC: No Reported Positive Cases", hjust = 0, size = 5) +
+  labs(title = "How underreported are the COVID-19 cases in each Indian state?",
+       subtitle = "Number of tests performed to detect each positive case in a state",
+       x = "",
+       y = "",
+       caption = "Data Source: Ministry of Health and Family Welfare\nGovernment of India\nAs of May 9, 2020") +
+  #ggthemes::theme_wsj() +
+  theme_minimal() + 
+  theme(panel.grid = element_blank(), 
+        axis.text = element_blank(), 
+        axis.title = element_blank(), 
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(face = "italic"),
+        
+        plot.caption = element_text(face = "italic"))
+  
+
+```
+
