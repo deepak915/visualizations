@@ -1,0 +1,93 @@
+---
+title: "Irfan Khan"
+author: "Deepak Dhankani"
+date: "4/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(ggrepel)
+library(lubridate)
+```
+
+```{r}
+df <- read_csv('data/Irrfan_Khan.csv')
+df1 <- read.csv('data/Rishi_Kapoor.csv')
+head(df)
+```
+
+```{r}
+df1 <- df1 %>% mutate(Release.Date = as.Date(Release.Date))
+df <- df %>% mutate(`Release Date` = as.Date(`Release Date`))
+
+```
+
+```{r}
+primary_genre = c()
+for (i in 1:length(df1$Genres)){
+  primary_genre[i] = str_split(df1$Genres,", ", n = 2)[[i]][1]
+}
+df1 <- cbind(df1, `Genre` = primary_genre)
+
+primary_genre = c()
+for (i in 1:length(df$Genres)){
+  primary_genre[i] = str_split(df$Genres,", ", n = 2)[[i]][1]
+}
+df <- cbind(df, `Genre` = primary_genre)
+
+```
+
+
+```{r}
+ggplot(df, aes(x = `Release Date`, y = `IMDb Rating`)) + 
+  geom_point() +
+  geom_text_repel(aes(label = Title), hjust = .5) +
+  theme_light() +
+  ggtitle('Irrfan Khan Movies with Release Date') +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) 
+```
+
+```{r}
+df %>%
+  arrange(desc(`IMDb Rating`)) %>%
+  #head(24) %>%
+  ggplot(aes(x = fct_reorder(`Title`, `IMDb Rating`), y = `IMDb Rating`, col = Genre)) +
+  geom_point(size=3.5) + 
+  geom_segment(aes(xend = Title, yend = 6)) +
+  coord_flip() +
+  theme_light() +
+  xlab("") +
+  ggtitle("Irrfan Khan Movies by Ratings") +
+  theme(plot.title = element_text(hjust = 0.5, face ="bold"), legend.position = "bottom")
+  
+```
+
+```{r}
+ggplot(df1, aes(x = `Release.Date`, y = `IMDb.Rating`)) + 
+  geom_point() +
+  geom_text_repel(aes(label = Title), hjust = .5) +
+  theme_light() +
+  ggtitle('Rishi Kapoor Movies with Release Date') +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) 
+```
+
+```{r}
+df1 %>%
+  arrange(desc(`IMDb.Rating`)) %>%
+  #head(24) %>%
+  ggplot(aes(x = fct_reorder(`Title`, `IMDb.Rating`), y = `IMDb.Rating`, col = Genre)) +
+  geom_point(size=3.5) + 
+  geom_segment(aes(xend = Title, yend = 6)) +
+  coord_flip() +
+  theme_light() +
+  xlab("") +
+  ggtitle("Rishi Kapoor Movies by Ratings") +
+  theme(plot.title = element_text(hjust = 0.5, face ="bold"), legend.position = "bottom")
+  
+```
+
