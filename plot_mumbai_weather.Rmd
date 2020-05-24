@@ -1,0 +1,129 @@
+---
+title: "Plots"
+author: "Deepak Dhankani"
+date: "5/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = F}
+library(tidyverse)
+library(lubridate)
+library(zoo)
+```
+
+```{r, message = F}
+weather <- read_csv("mumbai_weather.csv")
+head(weather)
+
+weather <- weather %>% mutate(DATE = as.Date(DATE, format = "%m/%d/%y"))
+```
+
+```{r}
+skimr::skim(weather)
+```
+
+```{r}
+min(weather$DATE)
+```
+
+```{r}
+max(weather$DATE)
+```
+
+```{r}
+# 2017-2019 avg daily temp
+historic <- weather %>%
+  filter(DATE<'2020-01-01') %>%
+  mutate(doy = yday(DATE)) %>%
+  group_by(doy) %>%
+  summarize(doy_tavg = mean(TAVG))
+```
+
+
+```{r}
+ggplot(historic, aes(x = doy, y = doy_tavg)) + 
+  geom_line()
+```
+
+```{r}
+historic$TAVG_roll20 <- rollmean(historic$doy_tavg, 20, fill = c(NA,NA,NA))
+
+historic <- historic %>%
+  mutate(doy_tmp = ifelse(doy >345, doy - 366, doy)) %>%
+  arrange(doy_tmp) %>%
+  mutate(roll20_tmp = rollmean(doy_tavg, 20, fill = c(NA,NA,NA))) %>%
+  mutate(TAVG_roll20 = ifelse(is.na(TAVG_roll20), roll20_tmp, TAVG_roll20)) #%>%
+#  select(-c(doy_tmp, roll20_tmp))
+```
+
+```{r}
+ggplot(historic, aes(x = doy, y = doy_tavg)) + 
+  geom_line(color = "#aaaaaa") + 
+  geom_line(aes(y = TAVG_roll20), color = "red")
+```
+
+```{r}
+current <- weather %>%
+  filter(DATE> '2019-12-31') %>%
+  mutate(doy = yday(DATE)) %>%
+  mutate(year = year(DATE)) %>%
+  left_join(historic, by = "doy") %>%
+  mutate(t_diff = TAVG - TAVG_roll20)
+```
+
+```{r}
+band_start <- yday(seq(ymd("2019-02-01"), ymd("2019-12-01"), by = "2 months"))
+band_end <- yday(seq(ymd("2019-03-01"), ymd("2020-01-01"), by = "2 months")- 1) 
+bands <- cbind.data.frame(band_start, band_end)
+```
+
+```{r}
+g<-
+ggplot(current) +
+  #geom_rect(data = bands, aes(xmin = band_start, xmax = band_end), 
+  #                            ymin = 60, ymax = 110, alpha = 0.7, fill = "#cccccc") +
+  geom_rect(aes(xmin = doy - 0.5, xmax = doy + 0.5, 
+                ymin = TAVG_roll20, ymax = TAVG, fill = t_diff), alpha = .95) +
+  geom_line(aes(x = doy, y = TAVG_roll20, color = "#777777")) +
+  scale_fill_gradient2(low = "blue", high = "red", name = "Temperature anomaly") +
+  scale_x_continuous(breaks = c(16,47,75,106,136,167,197,228,259,289,320,350),
+                     labels = c("Jan","Feb","Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
+                     position = "bottom") +
+  scale_y_continuous("°F",
+                     sec.axis = sec_axis(~.*(5/9)-32*(5/9), name = "°C")) +
+  geom_vline(xintercept = yday(ymd("2020-03-24")),color = "blue", linetype = 2) + 
+  geom_curve(aes(x = yday(ymd("2020-02-28")), y = 90, xend = yday(ymd("2020-03-24")), yend = 95),
+             color = "black", angle = 60, curvature = .75,
+             arrow =  arrow(length = unit(0.03, "npc"))) +
+  annotate("rect", xmin = yday(ymd("2020-03-24")), xmax = yday(ymd("2020-04-30")), ymin = 65, ymax = 100, alpha = .075) +
+  annotate("text", x = yday(ymd("2020-02-20")), y = 93, label = "March 23, 2020:\nIndia imposes\na nationwide lockdown",
+           hjust = 0, size = 3.2) +
+  annotate("text", x = yday(ymd("2020-03-25")), y = 75, label = "Temperature fluctuations\n have reduced in the\n lockdown era", hjust = 0, size = 3.2) +
+  annotate("text", x = yday(ymd("2020-01-01")), y = 66, label = "@deepak_dhankani", hjust = 0, size = 2.75)+
+  theme_minimal() +
+  labs(title = "2020 Daily Temperature Trends: Mumbai",
+       subtitle = "Compared to 2017-2019 20-day rolling average",
+       x = "",
+       caption = "Data Source: National Oceanic and Atmospheric Administration") +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.caption = element_text(face = "italic"),
+        panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.border = element_blank(),
+    axis.title.y.left = element_text(angle = 0, vjust = 0.5),
+    axis.title.y.right = element_text(angle = 0, vjust = 0.5),
+    axis.ticks.length = unit(-0.1, "cm"),
+    strip.text = element_text(hjust = 0, face = "bold"))
+g
+ggsave("mumbai.jpg", g)
+```
+
+```{r}
+
+```
+
